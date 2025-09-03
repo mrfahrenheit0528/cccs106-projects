@@ -1,8 +1,8 @@
 # Lab 2 Report: Git Version Control and Flet GUI Development
 
-**Student Name:** Guiller Angelo Hermoso
-**Student ID:** 231002276
-**Section:** BSCS 3A
+**Student Name:** Guiller Angelo Hermoso/
+**Student ID:** 231002276/
+**Section:** BSCS 3A/
 **Date:** September 03, 2025
 
 ## Git Configuration
@@ -10,7 +10,7 @@
 ### Repository Setup
 - **GitHub Repository:** https://github.com/mrfahrenheit0528/cccs106-projects
 - **Local Repository:** ✅ Initialized and connected
-- **Commit History:** 4 commits with descriptive messages
+- **Commit History:** more than 6 commits with descriptive messages
 
 ### Git Skills Demonstrated
 - ✅ Repository initialization and configuration
@@ -68,5 +68,6 @@ I learned how to manage repositories, handle commits, and collaborate using Git.
 ![personal_info_gui.py with filled form and generated profile](lab2_screenshots/pi.png "Personal Info GUI")
 
 ## Future Enhancements
+
 
 For hello_flet.py, adding time-based greetings and simple animations could improve user engagement. In personal_info_gui.py, saving profiles locally and enabling image uploads would enhance functionality. Both apps could benefit from better mobile responsiveness and cleaner UI design.
