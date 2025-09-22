@@ -28,8 +28,8 @@ def main(page: ft.Page):
         )
         failure_dialog = ft.AlertDialog(
             icon=ft.Icon(name=ft.Icons.ERROR, color=ft.Colors.RED, size=50),
-            title=ft.Text("Login Failed"),
-            content=ft.Text("Invalid username or password."),
+            title=ft.Text("Login Failed", text_align=ft.TextAlign.CENTER),
+            content=ft.Text("Invalid username or password.", text_align=ft.TextAlign.CENTER),
             actions=[ft.TextButton("OK", on_click=lambda e: page.close(failure_dialog))],
         )
         invalid_input_dialog = ft.AlertDialog(
@@ -39,8 +39,8 @@ def main(page: ft.Page):
             actions=[ft.TextButton("OK", on_click=lambda e: page.close(invalid_input_dialog))],
         )
         database_error_dialog = ft.AlertDialog(
-            title=ft.Text("Database Error"),
-            content=ft.Text("An error occurred while connecting to the database."),
+            title=ft.Text("Database Error", text_align=ft.TextAlign.CENTER),
+            content=ft.Text("An error occurred while connecting to the database.", text_align=ft.TextAlign.CENTER),
             actions=[ft.TextButton("OK", on_click=lambda e: page.close(database_error_dialog))],
         )
 
