@@ -3,6 +3,7 @@ import mysql.connector
 from db_connection import connect_db
 
 def main(page: ft.Page):
+    # set up window config and app style
     page.title = "Login"
     page.window.title_bar_hidden = True
     page.window.alignment = ft.Alignment(0.0, 0.0)
@@ -13,6 +14,7 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.LIGHT
 
     def login_click(e):
+        # when login button is clicked, will process login
         print("Login button clicked")
 
         usernameval = username.value
@@ -42,11 +44,13 @@ def main(page: ft.Page):
             actions=[ft.TextButton("OK", on_click=lambda e: page.close(database_error_dialog))],
         )
 
+        # check if inputs arent empty
         if not usernameval or not passwordval:
             page.open(invalid_input_dialog)
             return
         
         try:
+            # try to connect to db and check usr credentials
             conn = connect_db()
             cursor = conn.cursor(dictionary=True)
 
@@ -62,10 +66,12 @@ def main(page: ft.Page):
             cursor.close()
             conn.close()
         except mysql.connector.Error as err:
+            # print error if issue connect to db and show error dialog 
             print(f"Database error: {err}")
             page.open(database_error_dialog)
             page.update()
 
+    # define the UI components 
     title = ft.Text(
             "User Login", 
             size=20, 
@@ -98,9 +104,9 @@ def main(page: ft.Page):
             width=100,
             icon=ft.Icons.LOGIN,
             on_click=login_click
-
         )
 
+    # add all components to main page layout
     page.add(
         ft.Container(
             content=ft.Column(
@@ -120,7 +126,6 @@ def main(page: ft.Page):
             expand=True,
             alignment=ft.alignment.center
         ),
-        
     )
 
 ft.app(target=main)
