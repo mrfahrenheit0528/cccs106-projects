@@ -127,6 +127,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+cccs106_env_hermoso/
 
 # Spyder project settings
 .spyderproject
