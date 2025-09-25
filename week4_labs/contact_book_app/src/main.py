@@ -28,7 +28,7 @@ def main(page: ft.Page):
  
     add_button = ft.ElevatedButton( 
         text="Add Contact", 
-        on_click=lambda e: add_contact(page, inputs, contacts_list_view, db_conn) 
+        on_click=lambda e: add_contact(page, inputs, contacts_list_view, search_input, db_conn) 
     ) 
 
     page.add( 

@@ -64,7 +64,7 @@ def display_contacts(page, contacts_list_view, search_input, db_conn):
 
     page.update() 
 
-def add_contact(page, inputs, contacts_list_view, db_conn): 
+def add_contact(page, inputs, contacts_list_view, search_input, db_conn): 
     """Adds a new contact and refreshes the list.""" 
     name_input, phone_input, email_input = inputs 
     if not name_input.value.strip(): 
@@ -82,7 +82,7 @@ def add_contact(page, inputs, contacts_list_view, db_conn):
         for field in inputs: 
             field.value = "" 
     
-        display_contacts(page, contacts_list_view, db_conn) 
+        display_contacts(page, contacts_list_view, search_input, db_conn) 
         page.update() 
     
  
