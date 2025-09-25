@@ -20,7 +20,7 @@ def main(page: ft.Page):
     name_input = ft.TextField(icon=ft.Icons.PERSON, label="Name", width=350, on_change=lambda e: clear_error(page, e)) 
     phone_input = ft.TextField(icon=ft.Icons.PHONE, label="Phone", width=350, on_change=lambda e: clear_error(page, e)) 
     email_input = ft.TextField(icon=ft.Icons.EMAIL, label="Email", width=350, on_change=lambda e: clear_error(page, e)) 
-    search_input = ft.TextField(icon=ft.Icons.SEARCH, label="Search", width=350)
+    search_input = ft.TextField(icon=ft.Icons.SEARCH, label="Search Contact", width=350, on_change=lambda e: display_contacts(page, contacts_list_view, search_input, db_conn))
 
     inputs = (name_input, phone_input, email_input) 
  
@@ -48,7 +48,7 @@ def main(page: ft.Page):
         ) 
     ) 
  
-    display_contacts(page, contacts_list_view, db_conn) 
+    display_contacts(page, contacts_list_view, search_input, db_conn) 
  
 if __name__ == "__main__": 
     ft.app(target=main)

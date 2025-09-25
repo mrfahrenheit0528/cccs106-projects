@@ -7,10 +7,14 @@ def clear_error(page, e):
         e.control.error_text = None
         page.update()
 
-def display_contacts(page, contacts_list_view, db_conn): 
+def display_contacts(page, contacts_list_view, search_input, db_conn): 
     """Fetches and displays all contacts in the ListView.""" 
     contacts_list_view.controls.clear() 
-    contacts = get_all_contacts_db(db_conn) 
+    search_term = search_input.value
+    if search_term:
+        contacts = get_all_contacts_db(db_conn, search_term)
+    else:
+        contacts = get_all_contacts_db(db_conn, "")
 
     for contact in contacts:
         contact_id, name, phone, email = contact 
