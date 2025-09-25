@@ -2,6 +2,11 @@
 import flet as ft 
 from database import update_contact_db, delete_contact_db, add_contact_db, get_all_contacts_db 
 
+def clear_error(page, e):
+    if e.control.value.strip():
+        e.control.error_text = None
+        page.update()
+
 def display_contacts(page, contacts_list_view, db_conn): 
     """Fetches and displays all contacts in the ListView.""" 
     contacts_list_view.controls.clear() 
@@ -9,43 +14,73 @@ def display_contacts(page, contacts_list_view, db_conn):
 
     for contact in contacts:
         contact_id, name, phone, email = contact 
- 
+
+        delete_dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Please confirm"),
+            content=ft.Text("Are you sure you want to delete this contact?"),
+            actions=[
+                ft.TextButton("No", on_click=lambda e: page.close(delete_dlg)),
+                ft.TextButton("Yes", on_click=lambda e, cid=contact_id: (page.close(delete_dlg), delete_contact(page, cid, db_conn, contacts_list_view)))
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        )
+
         contacts_list_view.controls.append( 
-            ft.ListTile( 
-                title=ft.Text(name), 
-                subtitle=ft.Text(f"Phone: {phone} | Email: {email}"), 
-                trailing=ft.PopupMenuButton( 
-                    icon=ft.Icons.MORE_VERT, 
-                    items=[ 
-                        ft.PopupMenuItem( 
-                            text="Edit", 
-                            icon=ft.Icons.EDIT, 
-                            on_click=lambda _, c=contact: open_edit_dialog(page, c, 
-db_conn, contacts_list_view) 
-                        ), 
-                        ft.PopupMenuItem(), 
-                        ft.PopupMenuItem( 
-                            text="Delete", 
-                            icon=ft.Icons.DELETE, 
-                            on_click=lambda _, cid=contact_id: delete_contact(page, 
-cid, db_conn, contacts_list_view) 
-                        ), 
-                    ], 
-                ), 
-            ) 
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.ListTile( 
+                                leading=ft.Icon(ft.Icons.PERSON),
+                                title=ft.Text(name), 
+                                subtitle=ft.Text(f"Phone: {phone} | Email: {email}"), 
+                                trailing=ft.PopupMenuButton( 
+                                    icon=ft.Icons.MORE_VERT, 
+                                    items=[ 
+                                        ft.PopupMenuItem( 
+                                            text="Edit", 
+                                            icon=ft.Icons.EDIT, 
+                                            on_click=lambda _, c=contact: open_edit_dialog(page, c, db_conn, contacts_list_view) 
+                                        ), 
+                                        ft.PopupMenuItem(), 
+                                        ft.PopupMenuItem( 
+                                            text="Delete", 
+                                            icon=ft.Icons.DELETE, 
+                                            on_click=lambda _: page.open(delete_dlg)
+                                        )
+                                    ]
+                                )
+                            ) 
+                        ]
+                    )
+                )
+            )
         ) 
+
     page.update() 
- 
+
 def add_contact(page, inputs, contacts_list_view, db_conn): 
     """Adds a new contact and refreshes the list.""" 
     name_input, phone_input, email_input = inputs 
-    add_contact_db(db_conn, name_input.value, phone_input.value, email_input.value) 
- 
-    for field in inputs: 
-        field.value = "" 
- 
-    display_contacts(page, contacts_list_view, db_conn) 
-    page.update() 
+    if not name_input.value.strip(): 
+        name_input.error_text = "Name cannot be empty!"
+        page.update() 
+    elif not phone_input.value.strip(): 
+        phone_input.error_text = "Phone cannot be empty!"
+        page.update()
+    elif not email_input.value.strip(): 
+        email_input.error_text = "Email cannot be empty!"
+        page.update()
+    else:
+        add_contact_db(db_conn, name_input.value, phone_input.value, email_input.value) 
+
+        for field in inputs: 
+            field.value = "" 
+    
+        display_contacts(page, contacts_list_view, db_conn) 
+        page.update() 
+    
  
 def delete_contact(page, contact_id, db_conn, contacts_list_view): 
     """Deletes a contact and refreshes the list.""" 
@@ -61,8 +96,7 @@ def open_edit_dialog(page, contact, db_conn, contacts_list_view):
     edit_email = ft.TextField(label="Email", value=email) 
  
     def save_and_close(e): 
-        update_contact_db(db_conn, contact_id, edit_name.value, edit_phone.value, 
-edit_email.value) 
+        update_contact_db(db_conn, contact_id, edit_name.value, edit_phone.value, edit_email.value) 
         dialog.open = False 
         page.update() 
         display_contacts(page, contacts_list_view, db_conn) 
