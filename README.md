@@ -1,81 +1,64 @@
-# Loginform app
+# CCCS106 Projects — Workspace Overview
 
-## Run the app
+A collection of lab projects for CCCS106 (Application Development and Emerging Technologies). This repo contains Python and Flet GUI projects organized by week. This README describes the folder layout, requirements, and how to run each project's examples.
 
-### uv
+Quick introduction
+- Purpose: store weekly lab code (Python scripts, Flet GUI apps), reports and build artifacts for CCCS106.
+- Location: root of the workspace contains per-week folders: week1_labs, week2_labs, week3_labs, week4_labs.
 
-Run as a desktop app:
+Workspace layout (folders and purpose)
+- week1_labs — basic Python exercises (hello_world.py, basic_calculator.py, LAB1_REPORT.md)
+- week2_labs — Flet GUI examples (hello_flet.py, personal_info_gui.py, lab2_report.md)
+- week3_labs — Login form example (Flet app + MySQL connector; db_connection.py, main.py)
+- week4_labs — Contact Book App (Flet + sqlite) under contact_book_app/src
+- Other files: requirements.txt, per-project pyproject.toml, and README files inside week folders.
 
-```
-uv run flet run
-```
+Requirements
+- Python 3.9+ (recommended: 3.9 — 3.12). Use a virtual environment.
+- Flet 0.28.3 (used by the labs)
+- For week3_labs (Login form) you need MySQL server and mysql-connector-python if you use that example.
+- No global install required if you use a venv or Poetry.
 
-Run as a web app:
+Recommended quick setup (Windows)
+1. Create and activate venv
+2. Install dependencies:
+   - pip install -r requirements.txt
+3. Run a Flet app:
+   - python path\to\app.py
+   - or use the flet CLI: flet run path\to\app.py
 
-```
-uv run flet run --web
-```
+How to run each week's projects (concise)
 
-### Poetry
+- week1_labs (pure Python)
+  - Run scripts directly in the activated environment:
+    - python week1_labs\hello_world.py
+    - python week1_labs\basic_calculator.py
 
-Install dependencies from `pyproject.toml`:
+- week2_labs (Flet GUI)
+  - Run with Python:
+    - python week2_labs\hello_flet.py
+    - python week2_labs\personal_info_gui.py
+  - Or with flet CLI:
+    - flet run week2_labs\hello_flet.py
 
-```
-poetry install
-```
+- week3_labs (Login form + MySQL)
+  - Prerequisite: MySQL server running and a database named per db_connection.py (default: host=localhost, user=root, password= , database=fletapp).
+  - Update connection details in week3_labs\src\db_connection.py if needed.
+  - Run:
+    - python week3_labs\src\main.py
+  - If using mysql-connector, ensure it is installed: pip install mysql-connector-python
 
-Run as a desktop app:
+- week4_labs (Contact Book App — sqlite)
+  - No external DB required (uses sqlite).
+  - From project root run:
+    - python week4_labs\contact_book_app\src\main.py
+  - The app will create contacts.db in the working directory.
 
-```
-poetry run flet run
-```
+Tips & notes
+- Use the correct Python interpreter in your editor (VS Code: “Python: Select Interpreter”).
+- For GUI reloading: stop and re-run the Python process after code changes.
+- Keep credentials out of the repo (edit db_connection.py locally or use environment variables in real projects).
 
-Run as a web app:
-
-```
-poetry run flet run --web
-```
-
-For more details on running the app, refer to the [Getting Started Guide](https://flet.dev/docs/getting-started/).
-
-## Build the app
-
-### Android
-
-```
-flet build apk -v
-```
-
-For more details on building and signing `.apk` or `.aab`, refer to the [Android Packaging Guide](https://flet.dev/docs/publish/android/).
-
-### iOS
-
-```
-flet build ipa -v
-```
-
-For more details on building and signing `.ipa`, refer to the [iOS Packaging Guide](https://flet.dev/docs/publish/ios/).
-
-### macOS
-
-```
-flet build macos -v
-```
-
-For more details on building macOS package, refer to the [macOS Packaging Guide](https://flet.dev/docs/publish/macos/).
-
-### Linux
-
-```
-flet build linux -v
-```
-
-For more details on building Linux package, refer to the [Linux Packaging Guide](https://flet.dev/docs/publish/linux/).
-
-### Windows
-
-```
-flet build windows -v
-```
-
-For more details on building Windows package, refer to the [Windows Packaging Guide](https://flet.dev/docs/publish/windows/).
+Troubleshooting
+- If Flet window does not open, ensure your environment has Flet installed and the script uses ft.app(target=main).
+- For MySQL connection issues, confirm server status and credentials; check firewall settings.
