@@ -11,7 +11,7 @@ class Config:
     """Application configuration."""
     
     # API Configuration
-    API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
+    API_KEY = os.getenv("OPENWEATHER_API_KEY")
     BASE_URL = os.getenv(
         "OPENWEATHER_BASE_URL", 
         "https://api.openweathermap.org/data/2.5/weather"
