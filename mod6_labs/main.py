@@ -2,6 +2,7 @@
 """Weather Application using Flet v0.28.3"""
 
 import flet as ft
+import datetime
 from weather_service import WeatherService
 from config import Config
 
@@ -12,10 +13,12 @@ class WeatherApp:
     def __init__(self, page: ft.Page):
         self.page = page
         self.weather_service = WeatherService()
+        self.page.scroll = "auto"
         self.setup_page()
         self.build_ui()
 
         self.search_history = []
+        # self.additional_info_cards = []
     
     def add_to_history(self, city: str):
         """Add city to search history."""
@@ -36,7 +39,7 @@ class WeatherApp:
         self.page.title = Config.APP_TITLE
         
         # Add theme switcher
-        self.page.theme_mode = ft.ThemeMode.SYSTEM  # Use system theme
+        self.page.theme_mode = ft.ThemeMode.LIGHT  # Use system theme
         
         # Custom theme Colors
         self.page.theme = ft.Theme(
@@ -57,9 +60,27 @@ class WeatherApp:
         if self.page.theme_mode == ft.ThemeMode.LIGHT:
             self.page.theme_mode = ft.ThemeMode.DARK
             self.theme_button.icon = ft.Icons.LIGHT_MODE
+            self.weather_container.bgcolor = ft.Colors.BLUE
+            for card in self.additional_info_cards + self.forecast_cards + self.solar_events:
+                card.bgcolor = ft.Colors.BLUE_50
+            if self.temp <= 35:
+                self.temperature.color = ft.Colors.BLUE_50
+            else:
+                self.temperature.color = ft.Colors.ORANGE_200
+            self.feelslike.color = ft.Colors.GREY_200
+            self.description.color = ft.Colors.GREY_100
         else:
             self.page.theme_mode = ft.ThemeMode.LIGHT
             self.theme_button.icon = ft.Icons.DARK_MODE
+            self.weather_container.bgcolor = ft.Colors.BLUE_50
+            for card in self.additional_info_cards + self.forecast_cards + self.solar_events:
+                card.bgcolor = ft.Colors.WHITE
+            if self.temp <= 35:
+                self.temperature.color = ft.Colors.BLUE_900
+            else:
+                self.temperature.color = ft.Colors.RED_900
+            self.feelslike.color = ft.Colors.GREY_700
+            self.description.color = ft.Colors.GREY_700
         self.page.update()
 
     def build_ui(self):
@@ -155,72 +176,186 @@ class WeatherApp:
         # Extract data
         city_name = data.get("name", "Unknown")
         country = data.get("sys", {}).get("country", "")
-        temp = data.get("main", {}).get("temp", 0)
+        self.temp = data.get("main", {}).get("temp", 0)
         feels_like = data.get("main", {}).get("feels_like", 0)
         humidity = data.get("main", {}).get("humidity", 0)
         description = data.get("weather", [{}])[0].get("description", "").title()
         icon_code = data.get("weather", [{}])[0].get("icon", "01d")
         wind_speed = data.get("wind", {}).get("speed", 0)
+        pressure = data.get("main", {}).get("pressure", 0)
+        wind_gust = data.get("wind", {}).get("gust", 0)
+        sunrise = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunrise", 0) + data.get("timezone", 28800)).strftime("%I:%M %p")
+        sunset = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunset", 0) + data.get("timezone", 28800)).strftime("%I:%M %p")
+        date = datetime.datetime.utcfromtimestamp(data.get("dt", 0) + data.get("timezone", 28800))
         
-        # Build weather display
-        self.weather_container.content = ft.Column(
-            [
-                # Location
-                ft.Text(
-                    f"{city_name}, {country}",
-                    size=24,
-                    weight=ft.FontWeight.BOLD,
+        self.additional_info_cards = [
+                self.create_info_card(
+                    ft.Icons.WATER_DROP,
+                    "Humidity",
+                    f'{humidity}%' if humidity != 0 else 'No Data'
                 ),
-                
-                # Weather icon and description
-                ft.Row(
-                    [
-                        ft.Image(
-                            src=f"https://openweathermap.org/img/wn/{icon_code}@2x.png",
-                            width=100,
-                            height=100,
-                        ),
-                        ft.Text(
-                            description,
-                            size=20,
-                            italic=True,
-                        ),
-                    ],
-                    alignment=ft.MainAxisAlignment.CENTER,
+                self.create_info_card(
+                    ft.Icons.AIR,
+                    "Wind Speed",
+                    f'{wind_speed} m/s' if wind_speed != 0 else 'No Data'
                 ),
-                
-                # Temperature
-                ft.Text(
-                    f"{temp:.1f}°C",
+                self.create_info_card(
+                    ft.Icons.WIND_POWER,
+                    "Gustiness",
+                    f'{wind_gust} m/s' if wind_gust != 0 else 'No Data'
+                ),
+                self.create_info_card(
+                    ft.Icons.GAS_METER,
+                    "Pressure",
+                    f'{pressure} hPa' if pressure != 0 else 'No Data'
+                ),
+            ]
+        self.solar_events = [
+                self.create_info_card(
+                    ft.Icons.SUNNY,
+                    "Sunrise",
+                    f'{sunrise}' if sunrise != 0 else 'No Data'
+                ),
+                self.create_info_card(
+                    ft.Icons.SUNNY,
+                    "Sunset",
+                    f'{sunset}' if sunset != 0 else 'No Data'
+                )
+        ]
+        self.forecast_cards = [
+                self.create_info_card(
+                    ft.Icons.ONE_K,
+                    "Humidity",
+                    f"{humidity if humidity != 0 else "No Data"}%"
+                ),
+                self.create_info_card(
+                    ft.Icons.AIR,
+                    "Wind Speed",
+                    f"{f'{wind_speed} m/s' if wind_speed != 0 else 'No Data'}"
+                ),
+                self.create_info_card(
+                    ft.Icons.GAS_METER,
+                    "Pressure",
+                    f"{pressure} hPa"
+                ),
+                self.create_info_card(
+                    ft.Icons.GAS_METER,
+                    "Pressure",
+                    f"{pressure} hPa"
+                ),
+                self.create_info_card(
+                    ft.Icons.GAS_METER,
+                    "Pressure",
+                    f"{pressure} hPa"
+                )
+            ]
+
+        
+        self.temperature = ft.Text(
+                    f"{self.temp:.1f}°C",
                     size=48,
                     weight=ft.FontWeight.BOLD,
-                    color=ft.Colors.BLUE_900,
-                ),
-                
-                ft.Text(
+                    color=ft.Colors.BLUE_900 if self.temp <= 35 else ft.Colors.RED_900,
+                )
+        
+        self.feelslike =  ft.Text(
                     f"Feels like {feels_like:.1f}°C",
                     size=16,
                     color=ft.Colors.GREY_700,
+                )
+        self.description = ft.Text(
+                            description,
+                            size=16,
+                            italic=True,
+                            color=ft.Colors.GREY_700
+                        )
+        #==========================================
+        # Build weather display
+        #==========================================
+        self.weather_container.content = ft.Column(
+            [
+                ft.Row(
+                    [# Location
+                        ft.Text(
+                            f"{city_name}, {country}",
+                            size=30,
+                            weight=ft.FontWeight.BOLD,
+                            color=ft.Colors.BLACK
+
+                        )       
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER
+
                 ),
-                
-                ft.Divider(),
+                ft.Row(
+                    [
+                        ft.Column(
+                            [# Temperature
+                                self.temperature,
+                                self.feelslike,
+                            ],
+                            # spacing=-9,
+                        ),
+                        ft.Column(
+                            [# Weather icon and description
+                                ft.Container(
+                                    content = ft.Image(
+                                            src=f"https://openweathermap.org/img/wn/{icon_code}@2x.png",
+                                            width=120,
+                                            height=120,
+                                            ),
+                                    margin=ft.Margin(0, -11, 0, 0)
+                                )
+                                ,
+                                self.description,
+                            ],
+                            spacing=-20,
+                        )
+                    ],
+                    alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                    # wrap=True,
+                ),
                 
                 # Additional info
                 ft.Row(
-                    [
-                        self.create_info_card(
-                            ft.Icons.WATER_DROP,
-                            "Humidity",
-                            f"{humidity}%"
-                        ),
-                        self.create_info_card(
-                            ft.Icons.AIR,
-                            "Wind Speed",
-                            f"{wind_speed} m/s"
-                        ),
-                    ],
+                    self.additional_info_cards,
+                    scroll="adaptive",
                     alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                    # wrap=True
                 ),
+                ft.Divider(),
+                ft.Text(
+                    f"Sunrise and Sunset",
+                    size=24,
+                    weight=ft.FontWeight.BOLD,
+                    color=ft.Colors.BLACK
+                ),
+                ft.Row(
+                    self.solar_events,
+                    alignment=ft.MainAxisAlignment.SPACE_EVENLY,  
+                ),
+                ft.Divider(),
+                ft.Text(
+                    f"5-day forecas",
+                    size=24,
+                    weight=ft.FontWeight.BOLD,
+                    color=ft.Colors.BLACK
+                ),
+                # 5-day forecast (placeholder)
+                ft.Row(
+                    self.forecast_cards,
+                    scroll="adaptive",
+                    alignment=ft.MainAxisAlignment.SPACE_EVENLY,
+                    # wrap=True
+                ),
+                
+                # As-of date
+                ft.Text(
+                    f"As of {date}",
+                    size=12,
+                    italic=True,
+
+                )
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=10,
