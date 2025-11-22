@@ -1,4 +1,3 @@
-# ai_service.py
 """Service for generating AI-based lifestyle content."""
 
 import google.generativeai as genai

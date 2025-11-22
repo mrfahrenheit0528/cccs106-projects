@@ -1,4 +1,3 @@
-# main.py
 """Weather Application using Flet v0.28.3"""
 
 import flet as ft
@@ -9,8 +8,6 @@ from weather_service import WeatherService
 from ai_service import AIService
 from config import Config
 
-# NOTE: We removed the explicit 'from flet.map import ...' to avoid the internal ImportError.
-# We will access map components via 'ft.Map', 'ft.MapTileLayer', etc. inside build_map.
 
 class WeatherApp:
     """Main Weather Application class."""
@@ -26,8 +23,9 @@ class WeatherApp:
         self.search_history = []
         self.current_alert = None 
         
-        # --- FIX: Restore Cache Initialization ---
+        # --- Restore Cache Initialization ---
         self.weather_cache = {} 
+        # Duration for which weather data is cached (in minutes)
         self.CACHE_DURATION = datetime.timedelta(minutes=10)
         
         # --- STATE TRACKING ---
@@ -35,10 +33,11 @@ class WeatherApp:
         self.current_temp = 0
         self.current_feels_like = 0
         self.forecast_data = None 
-        
         self.build_ui()
+        self.page.update()
         
         # --- AUTO-FETCH LOCATION ON START ---
+        self.page.run_task(self.get_current_location_weather)
         self.page.run_task(self.get_current_location_weather)
 
     def add_to_history(self, city: str):
@@ -73,6 +72,7 @@ class WeatherApp:
     def search_from_history(self, city):
         """Handle click on history item."""
         self.search_bar.close_view(city)
+        self.search_bar.value = city
         self.on_search(None)
 
     def setup_page(self):
@@ -100,7 +100,6 @@ class WeatherApp:
             self.page.theme_mode = ft.ThemeMode.DARK
             self.theme_button.icon = ft.Icons.LIGHT_MODE
             
-            # Dark Mode Colors
             self.page.bgcolor = "#1A202C"
             container_bg = "#2D3748"
             text_color = "#F7FAFC"
@@ -112,8 +111,7 @@ class WeatherApp:
             # SWITCH TO LIGHT
             self.page.theme_mode = ft.ThemeMode.LIGHT
             self.theme_button.icon = ft.Icons.DARK_MODE
-            
-            # Light Mode Colors
+
             self.page.bgcolor = "#F0F4F8"
             container_bg = "#FFFFFF"
             text_color = "#1A202C"
@@ -129,9 +127,8 @@ class WeatherApp:
         self.search_bar.view_bgcolor = input_bg
         self.search_bar.bar_border_side = ft.BorderSide(1, sub_text_color)
         self.search_bar.bar_leading = ft.Icon(ft.Icons.LOCATION_CITY, color=ft.Colors.PRIMARY)
-
         # Update history list tile colors if they exist
-        if hasattr(self, 'search_history') and self.search_history:
+        if self.search_history:
              self.search_bar.controls = [
                 ft.ListTile(
                     title=ft.Text(c, color=text_color),
@@ -140,7 +137,7 @@ class WeatherApp:
                 ) for c in self.search_history
             ]
 
-        # Update display (rebuilds cards with new colors)
+        # Update display
         if hasattr(self, 'temperature'):
             self.update_display() 
             
@@ -173,10 +170,8 @@ class WeatherApp:
         self.temperature.value = f"{self.current_temp:.1f}{unit_sym}"
         self.feelslike.value = f"Feels like {self.current_feels_like:.1f}{unit_sym}"
         
-        # Dynamic Text Colors based on Theme
         is_dark = self.page.theme_mode == ft.ThemeMode.DARK
         
-        # Base text colors
         primary_col = "#F7FAFC" if is_dark else "#1A202C"
         secondary_col = "#A0AEC0" if is_dark else "#718096"
         card_bg = "#2D3748" if is_dark else "#FFFFFF"
@@ -196,12 +191,11 @@ class WeatherApp:
         self.temperature.color = temp_col
         self.feelslike.color = secondary_col
         self.description.color = secondary_col
-        self.location_text.color = primary_col # Update location color
+        self.location_text.color = primary_col
         self.solar_title.color = primary_col
         self.forecast_title.color = primary_col
         
         # REBUILD CARDS TO UPDATE COLORS
-        # We must re-assign the lists to the Row/Column controls to force update
         
         # 1. Additional Info
         if hasattr(self, 'last_weather_data'):
@@ -302,7 +296,7 @@ class WeatherApp:
             
         self.forecast_row.controls = self.forecast_cards
         
-        # FIX: ONLY UPDATE IF ADDED TO PAGE
+        # ONLY UPDATE IF ADDED TO PAGE
         if self.forecast_row.page:
             self.forecast_row.update()
 
@@ -391,7 +385,7 @@ class WeatherApp:
         self.weather_container = ft.Container(
             visible=False,
             bgcolor="#FFFFFF", # Default Light
-            border_radius=20, # Softer corners
+            border_radius=20, 
             padding=25,
             shadow=ft.BoxShadow(
                 spread_radius=1,
@@ -505,7 +499,7 @@ class WeatherApp:
             }
         return warning
 
-    # --- UPDATED LIFESTYLE METHOD (Responsive Colors & Content) ---
+    # --- LIFESTYLE METHOD ---
     async def get_lifestyle_content(self, weather_main, temp, city, timezone_offset):
         """Get lifestyle content (AI or Hardcoded fallback)."""
         
@@ -682,7 +676,7 @@ class WeatherApp:
         
         self.description = ft.Text(description, size=16, italic=True, color=text_secondary)
 
-        # --- GET LIFESTYLE CONTENT (ASYNC) WITH TIMEZONE ---
+        # --- GET LIFESTYLE CONTENT WITH TIMEZONE ---
         lifestyle = await self.get_lifestyle_content(weather_main, self.current_temp, city_name, timezone_offset)
         self.last_lifestyle_data = lifestyle # Save for theme toggling
         
@@ -859,7 +853,7 @@ class WeatherApp:
             self.loading.visible = False
             self.page.update()
     
-    # UPDATED: Now accepts colors for dynamic theming
+    # Accepts colors for dynamic theming
     def create_info_card(self, icon, label, value, bgcolor="#FFFFFF", text_primary="#1A202C", text_secondary="#718096"):
         """Create an info card for weather details."""
         return ft.Container(
