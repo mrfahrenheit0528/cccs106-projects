@@ -4,6 +4,7 @@
 import flet as ft
 import datetime
 import asyncio
+import httpx # Added for IP geolocation
 from weather_service import WeatherService
 from config import Config
 
@@ -28,6 +29,9 @@ class WeatherApp:
         self.forecast_data = None # Store forecast data for unit conversion
         
         self.build_ui()
+        
+        # --- AUTO-FETCH LOCATION ON START ---
+        self.page.run_task(self.get_current_location_weather)
 
     def add_to_history(self, city: str):
         """Add city to search history and update UI."""
@@ -127,7 +131,6 @@ class WeatherApp:
         """Update temperature displays on the UI."""
         unit_sym = "°C" if self.current_unit == "metric" else "°F"
         
-        # --- UPDATE UNIT BUTTON TEXT ---
         self.unit_button.text = unit_sym
         self.unit_button.update()
         
@@ -193,7 +196,6 @@ class WeatherApp:
             
         self.forecast_row.controls = self.forecast_cards
         
-        # --- FIX: ONLY UPDATE IF ADDED TO PAGE ---
         if self.forecast_row.page:
             self.forecast_row.update()
 
@@ -212,10 +214,8 @@ class WeatherApp:
             on_click=self.toggle_theme,
         )
         
-        # --- UNIT TOGGLE BUTTON (Text + Icon) ---
-        # Changed from IconButton to TextButton to display "°C"/"°F"
         self.unit_button = ft.TextButton(
-            text="°C", # Default
+            text="°C",
             icon=ft.Icons.THERMOSTAT,
             tooltip="Toggle Unit",
             on_click=self.toggle_units,
@@ -251,6 +251,14 @@ class WeatherApp:
             controls=[] 
         )
         
+        # --- LOCATION BUTTON ---
+        self.location_button = ft.IconButton(
+            icon=ft.Icons.MY_LOCATION,
+            tooltip="Use Current Location",
+            on_click=lambda e: self.page.run_task(self.get_current_location_weather),
+            icon_color=ft.Colors.BLUE_700
+        )
+        
         self.search_button = ft.ElevatedButton(
             "Search",
             icon=ft.Icons.SEARCH,
@@ -265,7 +273,8 @@ class WeatherApp:
         
         search_row = ft.Row(
             [
-                ft.Container(self.search_bar, expand=True), 
+                ft.Container(self.search_bar, expand=True),
+                self.location_button, # Add location button here
                 self.search_button, 
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -304,6 +313,42 @@ class WeatherApp:
             self.page.close(self.current_alert)
             self.current_alert = None
 
+    # --- IP LOCATION WEATHER ---
+    async def get_current_location_weather(self):
+        """Get weather for current location using IP."""
+        
+        # Show loading while detecting
+        self.loading.visible = True
+        self.error_message.visible = False
+        self.weather_container.visible = False
+        self.page.update()
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                # Get location from IP
+                response = await client.get("https://ipapi.co/json/")
+                data = response.json()
+                city = data.get('city', '')
+                
+                if city:
+                    # Update search bar with detected city
+                    self.search_bar.value = city
+                    self.search_bar.update()
+                    
+                    # Fetch weather for this city
+                    # Note: We call get_weather, which handles the loading/display logic
+                    # but we need to ensure we don't double-trigger loading
+                    await self.get_weather()
+                else:
+                    self.show_error("Could not detect your city name.")
+                    self.loading.visible = False
+                    self.page.update()
+                    
+        except Exception as e:
+            self.show_error("Could not detect your location. Check internet connection.")
+            self.loading.visible = False
+            self.page.update()
+
     def on_search(self, e):
         """Handle search button click or enter key press."""
         if self.current_alert:
@@ -323,9 +368,8 @@ class WeatherApp:
         self.current_unit = "metric"
         self.current_temp = data.get("main", {}).get("temp", 0)
         self.current_feels_like = data.get("main", {}).get("feels_like", 0)
-        self.forecast_data = forecast_data # Store forecast raw data
+        self.forecast_data = forecast_data 
         
-        # Reset button text to °C for new search
         self.unit_button.text = "°C"
         self.unit_button.update()
         
@@ -353,14 +397,12 @@ class WeatherApp:
             self.create_info_card(ft.Icons.SUNNY, "Sunset", f'{sunset}' if sunset != 0 else 'No Data')
         ]
 
-        # --- FORECAST SETUP ---
         self.forecast_cards = []
         self.forecast_row = ft.Row(
             self.forecast_cards, 
             scroll="adaptive", 
             alignment=ft.MainAxisAlignment.SPACE_EVENLY
         )
-        # Update data, but don't try to render yet
         self.update_forecast_display() 
 
         self.temperature = ft.Text(
