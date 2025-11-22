@@ -127,5 +127,3 @@ class WeatherService:
                 
         except Exception as e:
             raise WeatherServiceError(f"Error fetching weather data: {str(e)}")
-        
-    # In weather_service.py, add:
