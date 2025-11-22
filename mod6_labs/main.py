@@ -17,46 +17,46 @@ class WeatherApp:
         self.page.scroll = "auto"
         self.setup_page()
         
-        # Initialize history before building UI
+        # Initialize history
         self.search_history = []
-        self.current_alert = None # Track the active alert
+        self.current_alert = None 
+        
+        # --- STATE TRACKING ---
+        self.current_unit = "metric" # Default to metric
+        self.current_temp = 0
+        self.current_feels_like = 0
+        self.forecast_data = None # Store forecast data for unit conversion
         
         self.build_ui()
 
     def add_to_history(self, city: str):
         """Add city to search history and update UI."""
-        # Clean up the city name (Title Case)
         city = city.strip().title()
         
-        # Remove if exists (to move it to top)
         if city in self.search_history:
             self.search_history.remove(city)
             
-        # Add to top
         self.search_history.insert(0, city)
-        self.search_history = self.search_history[:5]  # Keep last 5
+        self.search_history = self.search_history[:5]
         
-        # Update the SearchBar controls (The view content)
         self.search_bar.controls = [
             ft.ListTile(
-                title=ft.Text(c),
-                leading=ft.Icon(ft.Icons.HISTORY),
+                title=ft.Text(c, color=ft.Colors.BLACK),
+                leading=ft.Icon(ft.Icons.HISTORY, color=ft.Colors.GREY),
                 on_click=lambda e, city=c: self.search_from_history(city)
             ) for c in self.search_history
         ]
         
-        # --- DYNAMIC HEIGHT ADJUSTMENT ---
         item_count = len(self.search_history)
         view_height = min(350, max(70, item_count * 65))
         
-        # Corrected property for size constraints
         self.search_bar.view_size_constraints = ft.BoxConstraints(max_height=view_height)
         self.search_bar.update()
 
     def search_from_history(self, city):
         """Handle click on history item."""
-        self.search_bar.close_view(city) # Closes view and sets text to city
-        self.on_search(None) # Trigger search
+        self.search_bar.close_view(city)
+        self.on_search(None)
 
     def setup_page(self):
         """Configure page settings."""
@@ -68,6 +68,7 @@ class WeatherApp:
         self.page.window.height = Config.APP_HEIGHT
         self.page.window.resizable = False
         self.page.window.center()
+        self.page.banner = None
 
     def toggle_theme(self, e):
         """Toggle between light and dark theme."""
@@ -76,56 +77,128 @@ class WeatherApp:
             self.theme_button.icon = ft.Icons.LIGHT_MODE
             self.weather_container.bgcolor = ft.Colors.BLUE
             
-            # Update SearchBar style for Dark Mode
             self.search_bar.bar_bgcolor = ft.Colors.GREY_900
             self.search_bar.view_bgcolor = ft.Colors.GREY_900
             self.search_bar.bar_border_side = ft.BorderSide(1, ft.Colors.GREY_700)
             self.search_bar.bar_leading = ft.Icon(ft.Icons.LOCATION_CITY, color=ft.Colors.BLUE_200)
             
+            if hasattr(self, 'temperature'):
+                self.update_display() 
+            
             if hasattr(self, 'additional_info_cards'):
                 all_cards = self.additional_info_cards + getattr(self, 'forecast_cards', []) + getattr(self, 'solar_events', [])
                 for card in all_cards:
                     card.bgcolor = ft.Colors.BLUE_50
-            
-            if hasattr(self, 'temp'):
-                if self.temp <= 35:
-                    self.temperature.color = ft.Colors.BLUE_50
-                else:
-                    self.temperature.color = ft.Colors.ORANGE_200
-            
-            if hasattr(self, 'feelslike'):
-                self.feelslike.color = ft.Colors.GREY_200
-                self.description.color = ft.Colors.GREY_100
+                    
         else:
             self.page.theme_mode = ft.ThemeMode.LIGHT
             self.theme_button.icon = ft.Icons.DARK_MODE
             self.weather_container.bgcolor = ft.Colors.BLUE_50
             
-            # Update SearchBar style for Light Mode
             self.search_bar.bar_bgcolor = ft.Colors.WHITE
             self.search_bar.view_bgcolor = ft.Colors.WHITE
             self.search_bar.bar_border_side = ft.BorderSide(1, ft.Colors.BLACK)
             self.search_bar.bar_leading = ft.Icon(ft.Icons.LOCATION_CITY, color=ft.Colors.BLUE_700)
 
+            if hasattr(self, 'temperature'):
+                self.update_display() 
+
             if hasattr(self, 'additional_info_cards'):
                 all_cards = self.additional_info_cards + getattr(self, 'forecast_cards', []) + getattr(self, 'solar_events', [])
                 for card in all_cards:
                     card.bgcolor = ft.Colors.WHITE
-            
-            if hasattr(self, 'temp'):
-                if self.temp <= 35:
-                    self.temperature.color = ft.Colors.BLUE_900
-                else:
-                    self.temperature.color = ft.Colors.RED_900
-            
-            if hasattr(self, 'feelslike'):
-                self.feelslike.color = ft.Colors.GREY_700
-                self.description.color = ft.Colors.GREY_700
         self.page.update()
+
+    def toggle_units(self, e):
+        """Toggle between Celsius and Fahrenheit."""
+        if self.current_unit == "metric":
+            self.current_unit = "imperial"
+            self.current_temp = (self.current_temp * 9/5) + 32
+            self.current_feels_like = (self.current_feels_like * 9/5) + 32
+        else:
+            self.current_unit = "metric"
+            self.current_temp = (self.current_temp - 32) * 5/9
+            self.current_feels_like = (self.current_feels_like - 32) * 5/9
+            
+        self.update_display()
+        self.update_forecast_display()
+
+    def update_display(self):
+        """Update temperature displays on the UI."""
+        unit_sym = "°C" if self.current_unit == "metric" else "°F"
+        
+        # --- UPDATE UNIT BUTTON TEXT ---
+        self.unit_button.text = unit_sym
+        self.unit_button.update()
+        
+        self.temperature.value = f"{self.current_temp:.1f}{unit_sym}"
+        self.feelslike.value = f"Feels like {self.current_feels_like:.1f}{unit_sym}"
+        
+        is_hot = False
+        if self.current_unit == "metric":
+            is_hot = self.current_temp > 35
+        else:
+            is_hot = self.current_temp > 95
+
+        if self.page.theme_mode == ft.ThemeMode.LIGHT:
+            self.temperature.color = ft.Colors.RED_900 if is_hot else ft.Colors.BLUE_900
+            self.feelslike.color = ft.Colors.GREY_700
+        else:
+            self.temperature.color = ft.Colors.ORANGE_200 if is_hot else ft.Colors.BLUE_50
+            self.feelslike.color = ft.Colors.GREY_200
+            
+        self.temperature.update()
+        self.feelslike.update()
+
+    def update_forecast_display(self):
+        """Rebuild forecast cards with current unit."""
+        if not self.forecast_data:
+            return
+
+        self.forecast_cards.clear()
+        daily_data = [item for item in self.forecast_data['list'] if "12:00:00" in item['dt_txt']]
+        
+        for item in daily_data[:5]:
+            f_date_str = item['dt_txt']
+            f_date = datetime.datetime.strptime(f_date_str, "%Y-%m-%d %H:%M:%S")
+            f_day = f_date.strftime("%a")
+            
+            # Get base temp (Metric)
+            f_temp = item['main']['temp']
+            
+            # Convert if needed
+            if self.current_unit == "imperial":
+                f_temp = (f_temp * 9/5) + 32
+                
+            f_icon = item['weather'][0]['icon']
+            
+            card_bg = ft.Colors.WHITE if self.page.theme_mode == ft.ThemeMode.LIGHT else ft.Colors.BLUE_50
+            
+            card = ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Text(f_day, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700),
+                        ft.Image(src=f"https://openweathermap.org/img/wn/{f_icon}.png", width=50, height=50),
+                        ft.Text(f"{f_temp:.0f}°", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=2,
+                ),
+                padding=10,
+                width=80,
+                bgcolor=card_bg,
+                border_radius=10,
+            )
+            self.forecast_cards.append(card)
+            
+        self.forecast_row.controls = self.forecast_cards
+        
+        # --- FIX: ONLY UPDATE IF ADDED TO PAGE ---
+        if self.forecast_row.page:
+            self.forecast_row.update()
 
     def build_ui(self):
         """Build the user interface."""
-        # Title
         self.title = ft.Text(
             "Weather App",
             size=32,
@@ -133,19 +206,29 @@ class WeatherApp:
             color=ft.Colors.BLUE_700,
         )
 
-        # Theme toggle
         self.theme_button = ft.IconButton(
             icon=ft.Icons.DARK_MODE,
             tooltip="Toggle theme",
             on_click=self.toggle_theme,
         )
+        
+        # --- UNIT TOGGLE BUTTON (Text + Icon) ---
+        # Changed from IconButton to TextButton to display "°C"/"°F"
+        self.unit_button = ft.TextButton(
+            text="°C", # Default
+            icon=ft.Icons.THERMOSTAT,
+            tooltip="Toggle Unit",
+            on_click=self.toggle_units,
+            style=ft.ButtonStyle(color=ft.Colors.BLUE_700)
+        )
 
         title_row = ft.Row(
-            [self.title, self.theme_button],
+            [
+                self.title,
+                ft.Row([self.unit_button, self.theme_button]),
+            ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
         )
-        
-        # --- CUSTOM STYLED SEARCH BAR ---
         
         self.search_bar = ft.SearchBar(
             view_elevation=4,
@@ -153,26 +236,21 @@ class WeatherApp:
             bar_hint_text="Enter city name (e.g. London)",
             view_hint_text="Recent searches...",
             on_submit=self.on_search,
-            
             on_tap=lambda e: self.search_bar.open_view(),
             
-            # --- DESIGN ---
             bar_bgcolor=ft.Colors.WHITE,
             bar_shape=ft.RoundedRectangleBorder(radius=5),
             bar_border_side=ft.BorderSide(width=1, color=ft.Colors.BLACK),
             bar_leading=ft.Icon(ft.Icons.LOCATION_CITY, color=ft.Colors.BLUE_700),
             bar_elevation=0,
             
-            # --- VIEW STYLING ---
+            view_bgcolor=ft.Colors.WHITE,
             view_shape=ft.RoundedRectangleBorder(radius=5),
-            
-            # Corrected property for size constraints
             view_size_constraints=ft.BoxConstraints(max_height=70),
             
             controls=[] 
         )
         
-        # Search button
         self.search_button = ft.ElevatedButton(
             "Search",
             icon=ft.Icons.SEARCH,
@@ -185,7 +263,6 @@ class WeatherApp:
             ),
         )
         
-        # Search Layout
         search_row = ft.Row(
             [
                 ft.Container(self.search_bar, expand=True), 
@@ -195,7 +272,6 @@ class WeatherApp:
             spacing=10
         )
         
-        # Weather container
         self.weather_container = ft.Container(
             visible=False,
             bgcolor=ft.Colors.BLUE_50,
@@ -203,13 +279,9 @@ class WeatherApp:
             padding=20,
         )
         
-        # Error message
         self.error_message = ft.Text("", color=ft.Colors.RED_700, visible=False)
-        
-        # Loading indicator
         self.loading = ft.ProgressRing(visible=False)
         
-        # Add components
         self.page.add(
             ft.Column(
                 [
@@ -229,17 +301,14 @@ class WeatherApp:
     def close_banner(self, e=None):
         """Close the banner."""
         if self.current_alert:
-            # Use modern close() method
             self.page.close(self.current_alert)
             self.current_alert = None
 
     def on_search(self, e):
         """Handle search button click or enter key press."""
-        # Clear any old alerts
         if self.current_alert:
             self.close_banner()
 
-        # Close the search view if open
         current_val = self.search_bar.value
         if current_val:
             self.search_bar.close_view(current_val)
@@ -247,11 +316,19 @@ class WeatherApp:
 
     async def display_weather(self, data: dict, forecast_data: dict = None):
         """Display weather information."""
-        # Extract data
         city_name = data.get("name", "Unknown")
         country = data.get("sys", {}).get("country", "")
-        self.temp = data.get("main", {}).get("temp", 0)
-        feels_like = data.get("main", {}).get("feels_like", 0)
+        
+        # --- STORE STATE ---
+        self.current_unit = "metric"
+        self.current_temp = data.get("main", {}).get("temp", 0)
+        self.current_feels_like = data.get("main", {}).get("feels_like", 0)
+        self.forecast_data = forecast_data # Store forecast raw data
+        
+        # Reset button text to °C for new search
+        self.unit_button.text = "°C"
+        self.unit_button.update()
+        
         humidity = data.get("main", {}).get("humidity", 0)
         description = data.get("weather", [{}])[0].get("description", "").title()
         icon_code = data.get("weather", [{}])[0].get("icon", "01d")
@@ -264,7 +341,6 @@ class WeatherApp:
         sunset = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunset", 0) + timezone_offset).strftime("%I:%M %p")
         date_display = datetime.datetime.utcfromtimestamp(data.get("dt", 0) + timezone_offset)
         
-        # Info Cards
         self.additional_info_cards = [
             self.create_info_card(ft.Icons.WATER_DROP, "Humidity", f'{humidity}%' if humidity != 0 else 'No Data'),
             self.create_info_card(ft.Icons.AIR, "Wind Speed", f'{wind_speed} m/s' if wind_speed != 0 else 'No Data'),
@@ -277,46 +353,31 @@ class WeatherApp:
             self.create_info_card(ft.Icons.SUNNY, "Sunset", f'{sunset}' if sunset != 0 else 'No Data')
         ]
 
-        # Forecast Cards
+        # --- FORECAST SETUP ---
         self.forecast_cards = []
-        if forecast_data:
-            daily_data = [item for item in forecast_data['list'] if "12:00:00" in item['dt_txt']]
-            for item in daily_data[:5]:
-                f_date_str = item['dt_txt']
-                f_date = datetime.datetime.strptime(f_date_str, "%Y-%m-%d %H:%M:%S")
-                f_day = f_date.strftime("%a")
-                f_temp = item['main']['temp']
-                f_icon = item['weather'][0]['icon']
-                
-                card = ft.Container(
-                    content=ft.Column(
-                        [
-                            ft.Text(f_day, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_700),
-                            ft.Image(src=f"https://openweathermap.org/img/wn/{f_icon}.png", width=50, height=50),
-                            ft.Text(f"{f_temp:.0f}°C", weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
-                        ],
-                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=2,
-                    ),
-                    padding=10,
-                    width=80,
-                    bgcolor=ft.Colors.WHITE,
-                    border_radius=10,
-                )
-                self.forecast_cards.append(card)
+        self.forecast_row = ft.Row(
+            self.forecast_cards, 
+            scroll="adaptive", 
+            alignment=ft.MainAxisAlignment.SPACE_EVENLY
+        )
+        # Update data, but don't try to render yet
+        self.update_forecast_display() 
 
-        # Main Text components
         self.temperature = ft.Text(
-            f"{self.temp:.1f}°C",
+            f"{self.current_temp:.1f}°C",
             size=48,
             weight=ft.FontWeight.BOLD,
-            color=ft.Colors.BLUE_900 if self.temp <= 35 else ft.Colors.RED_900,
+            color=ft.Colors.BLUE_900 if self.current_temp <= 35 else ft.Colors.RED_900,
         )
         
-        self.feelslike = ft.Text(f"Feels like {feels_like:.1f}°C", size=16, color=ft.Colors.GREY_700)
+        self.feelslike = ft.Text(
+            f"Feels like {self.current_feels_like:.1f}°C", 
+            size=16, 
+            color=ft.Colors.GREY_700
+        )
+        
         self.description = ft.Text(description, size=16, italic=True, color=ft.Colors.GREY_700)
 
-        # Assemble UI
         self.weather_container.content = ft.Column(
             [
                 ft.Row([ft.Text(f"{city_name}, {country}", size=30, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK)], alignment=ft.MainAxisAlignment.CENTER),
@@ -342,34 +403,28 @@ class WeatherApp:
                 ft.Row(self.solar_events, alignment=ft.MainAxisAlignment.SPACE_EVENLY),
                 ft.Divider(),
                 ft.Text("5-Day Forecast", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
-                ft.Row(self.forecast_cards, scroll="adaptive", alignment=ft.MainAxisAlignment.SPACE_EVENLY),
+                self.forecast_row,
                 ft.Text(f"As of {date_display}", size=12, italic=True)
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=10,
         )
 
-        # Fade In Animation
         self.weather_container.animate_opacity = 300
         self.weather_container.opacity = 0
         self.weather_container.visible = True
         self.page.update()
 
-        # --- DEBUGGING LOGS ---
-        print(f"DEBUG: Current Temp from API: {self.temp}")
-        
-        # --- WEATHER ALERTS (Modern Implementation) ---
-        if self.temp > 35:
-            print("DEBUG: Triggering Alert...")
+        # --- WEATHER ALERTS ---
+        if self.current_temp > 27:
             self.current_alert = ft.Banner(
                 bgcolor=ft.Colors.AMBER_100,
                 leading=ft.Icon(ft.Icons.WARNING, color=ft.Colors.AMBER, size=40),
-                content=ft.Text(f"High temperature alert! ({self.temp:.1f}°C)", color=ft.Colors.AMBER_900, size=16),
+                content=ft.Text(f"⚠️ High temperature alert! ({self.current_temp:.1f}°C)"),
                 actions=[
                     ft.TextButton("Dismiss", on_click=self.close_banner)
                 ],
             )
-            # Use open() instead of assigning to property
             self.page.open(self.current_alert)
 
         await asyncio.sleep(0.1)
@@ -379,7 +434,6 @@ class WeatherApp:
 
     async def get_weather(self):
         """Fetch and display weather data."""
-        # Get value from SearchBar
         city = self.search_bar.value.strip() if self.search_bar.value else ""
         
         if not city:
@@ -398,8 +452,6 @@ class WeatherApp:
             )
             
             await self.display_weather(weather_data, forecast_data)
-            
-            # Add to history after successful fetch
             self.add_to_history(city)
             
         except Exception as e:
