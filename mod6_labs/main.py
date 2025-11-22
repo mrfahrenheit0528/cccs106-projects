@@ -18,28 +18,26 @@ class WeatherApp:
         self.page.scroll = "auto"
         self.setup_page()
         
-        # Initialize history
+        # --- CACHE & STATE ---
         self.search_history = []
-        self.current_alert = None 
+        self.current_alert = None
+        self.weather_cache = {} # { "city": {"weather": data, "forecast": data, "timestamp": datetime} }
+        self.CACHE_DURATION = datetime.timedelta(minutes=10) # 10 min cache life
         
         # --- STATE TRACKING ---
-        self.current_unit = "metric" # Default to metric
+        self.current_unit = "metric"
         self.current_temp = 0
         self.current_feels_like = 0
-        self.forecast_data = None # Store forecast data for unit conversion
+        self.forecast_data = None 
         
         self.build_ui()
-        
-        # --- AUTO-FETCH LOCATION ON START ---
         self.page.run_task(self.get_current_location_weather)
 
     def add_to_history(self, city: str):
-        """Add city to search history and update UI."""
+        """Add city to search history."""
         city = city.strip().title()
-        
         if city in self.search_history:
             self.search_history.remove(city)
-            
         self.search_history.insert(0, city)
         self.search_history = self.search_history[:5]
         
@@ -53,7 +51,6 @@ class WeatherApp:
         
         item_count = len(self.search_history)
         view_height = min(350, max(70, item_count * 65))
-        
         self.search_bar.view_size_constraints = ft.BoxConstraints(max_height=view_height)
         self.search_bar.update()
 
@@ -93,7 +90,6 @@ class WeatherApp:
                 all_cards = self.additional_info_cards + getattr(self, 'forecast_cards', []) + getattr(self, 'solar_events', [])
                 for card in all_cards:
                     card.bgcolor = ft.Colors.BLUE_50
-                    
         else:
             self.page.theme_mode = ft.ThemeMode.LIGHT
             self.theme_button.icon = ft.Icons.DARK_MODE
@@ -130,7 +126,6 @@ class WeatherApp:
     def update_display(self):
         """Update temperature displays on the UI."""
         unit_sym = "°C" if self.current_unit == "metric" else "°F"
-        
         self.unit_button.text = unit_sym
         self.unit_button.update()
         
@@ -165,16 +160,12 @@ class WeatherApp:
             f_date_str = item['dt_txt']
             f_date = datetime.datetime.strptime(f_date_str, "%Y-%m-%d %H:%M:%S")
             f_day = f_date.strftime("%a")
-            
-            # Get base temp (Metric)
             f_temp = item['main']['temp']
             
-            # Convert if needed
             if self.current_unit == "imperial":
                 f_temp = (f_temp * 9/5) + 32
                 
             f_icon = item['weather'][0]['icon']
-            
             card_bg = ft.Colors.WHITE if self.page.theme_mode == ft.ThemeMode.LIGHT else ft.Colors.BLUE_50
             
             card = ft.Container(
@@ -195,7 +186,6 @@ class WeatherApp:
             self.forecast_cards.append(card)
             
         self.forecast_row.controls = self.forecast_cards
-        
         if self.forecast_row.page:
             self.forecast_row.update()
 
@@ -237,21 +227,17 @@ class WeatherApp:
             view_hint_text="Recent searches...",
             on_submit=self.on_search,
             on_tap=lambda e: self.search_bar.open_view(),
-            
             bar_bgcolor=ft.Colors.WHITE,
             bar_shape=ft.RoundedRectangleBorder(radius=5),
             bar_border_side=ft.BorderSide(width=1, color=ft.Colors.BLACK),
             bar_leading=ft.Icon(ft.Icons.LOCATION_CITY, color=ft.Colors.BLUE_700),
             bar_elevation=0,
-            
             view_bgcolor=ft.Colors.WHITE,
             view_shape=ft.RoundedRectangleBorder(radius=5),
             view_size_constraints=ft.BoxConstraints(max_height=70),
-            
             controls=[] 
         )
         
-        # --- LOCATION BUTTON ---
         self.location_button = ft.IconButton(
             icon=ft.Icons.MY_LOCATION,
             tooltip="Use Current Location",
@@ -290,6 +276,8 @@ class WeatherApp:
         
         self.error_message = ft.Text("", color=ft.Colors.RED_700, visible=False)
         self.loading = ft.ProgressRing(visible=False)
+        
+        # Removed status bar from here as it will be at the bottom now
         
         self.page.add(
             ft.Column(
@@ -334,9 +322,8 @@ class WeatherApp:
                     self.show_error("Could not detect your city name.")
                     self.loading.visible = False
                     self.page.update()
-                    
         except Exception as e:
-            self.show_error("Could not detect your location. Check internet connection.")
+            self.show_error("Could not detect your location.")
             self.loading.visible = False
             self.page.update()
 
@@ -350,63 +337,64 @@ class WeatherApp:
             self.search_bar.close_view(current_val)
         self.page.run_task(self.get_weather)
 
-    # --- NEW: WARNING SYSTEM LOGIC ---
     def get_weather_warnings(self, data: dict):
-        """Analyze weather data and return a warning message and style."""
-        
+        """Analyze weather data and return a warning."""
         temp = data.get("main", {}).get("temp", 0)
         wind = data.get("wind", {}).get("speed", 0)
         weather_desc = data.get("weather", [{}])[0].get("main", "").lower()
         
         warning = None
-        
-        # 1. Extreme Heat
         if temp > 35:
             warning = {
-                "msg": f"Extreme Heat Alert! ({temp:.1f}°C)\nWear sunscreen and stay hydrated.",
+                "msg": f"🔥 Extreme Heat Alert! ({temp:.1f}°C)\nWear sunscreen.",
                 "color": ft.Colors.RED_100,
-                "icon": ft.Icons.HEAT_PUMP,
+                "icon": ft.Icons.LOCAL_FIRE_DEPARTMENT,
                 "icon_color": ft.Colors.RED
             }
-        # 2. High Heat (Warning Level)
         elif temp > 30:
             warning = {
-                "msg": f"High Temperature Warning ({temp:.1f}°C)\nLimit outdoor activities.",
+                "msg": f"☀️ High Temp Warning ({temp:.1f}°C)\nStay hydrated.",
                 "color": ft.Colors.AMBER_100,
                 "icon": ft.Icons.WARNING,
                 "icon_color": ft.Colors.AMBER
             }
-        # 3. Extreme Cold
         elif temp < 5:
             warning = {
-                "msg": f"Freeze Warning! ({temp:.1f}°C)\nWear heavy winter clothing.",
+                "msg": f"❄️ Freeze Warning! ({temp:.1f}°C)",
                 "color": ft.Colors.BLUE_100,
                 "icon": ft.Icons.AC_UNIT,
                 "icon_color": ft.Colors.BLUE
             }
-        # 4. High Wind
-        elif wind > 15: # m/s
+        elif wind > 15:
             warning = {
-                "msg": f"High Wind Alert! ({wind} m/s)\nSecure loose objects outside.",
+                "msg": f"💨 High Wind Alert! ({wind} m/s)",
                 "color": ft.Colors.GREY_300,
                 "icon": ft.Icons.AIR,
                 "icon_color": ft.Colors.GREY_700
             }
-        # 5. Rain/Storm
-        elif "rain" in weather_desc or "storm" in weather_desc:
+        elif "rain" in weather_desc:
             warning = {
-                "msg": "Rain/Storm Detected.\nDon't forget your umbrella!",
+                "msg": "🌧️ Rain Detected. Bring an umbrella!",
                 "color": ft.Colors.BLUE_GREY_100,
                 "icon": ft.Icons.UMBRELLA,
                 "icon_color": ft.Colors.BLUE_GREY_700
             }
-            
         return warning
 
-    async def display_weather(self, data: dict, forecast_data: dict = None):
-        """Display weather information."""
+    async def display_weather(self, data: dict, forecast_data: dict = None, is_cached: bool = False, timestamp: datetime.datetime = None):
+        """Display weather information with cache status."""
         city_name = data.get("name", "Unknown")
         country = data.get("sys", {}).get("country", "")
+        
+        # --- DETERMINE FOOTER TEXT ---
+        footer_text = "Live Data"
+        footer_color = ft.Colors.GREY_700
+        
+        if is_cached:
+            time_diff = datetime.datetime.now() - timestamp
+            mins_ago = int(time_diff.total_seconds() / 60)
+            footer_text = f"Offline - Data from {mins_ago} mins ago"
+            footer_color = ft.Colors.ORANGE_700
         
         self.current_unit = "metric"
         self.current_temp = data.get("main", {}).get("temp", 0)
@@ -426,7 +414,6 @@ class WeatherApp:
         timezone_offset = data.get("timezone", 0)
         sunrise = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunrise", 0) + timezone_offset).strftime("%I:%M %p")
         sunset = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunset", 0) + timezone_offset).strftime("%I:%M %p")
-        date_display = datetime.datetime.utcfromtimestamp(data.get("dt", 0) + timezone_offset)
         
         self.additional_info_cards = [
             self.create_info_card(ft.Icons.WATER_DROP, "Humidity", f'{humidity}%' if humidity != 0 else 'No Data'),
@@ -489,7 +476,8 @@ class WeatherApp:
                 ft.Divider(),
                 ft.Text("5-Day Forecast", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
                 self.forecast_row,
-                ft.Text(f"As of {date_display}", size=12, italic=True)
+                # --- NEW FOOTER TEXT ---
+                ft.Text(footer_text, size=12, italic=True, color=footer_color)
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=10,
@@ -500,7 +488,6 @@ class WeatherApp:
         self.weather_container.visible = True
         self.page.update()
 
-        # --- NEW: INTEGRATED ALERT SYSTEM ---
         warning = self.get_weather_warnings(data)
         if warning:
             self.current_alert = ft.Banner(
@@ -531,17 +518,55 @@ class WeatherApp:
         self.weather_container.visible = False
         self.page.update()
         
+        # 1. CHECK CACHE FIRST
+        now = datetime.datetime.now()
+        # Normalize key for cache lookup
+        cache_key = city.lower()
+        
+        if cache_key in self.weather_cache:
+            cached = self.weather_cache[cache_key]
+            if now - cached['timestamp'] < self.CACHE_DURATION:
+                await self.display_weather(
+                    cached['weather'], 
+                    cached['forecast'], 
+                    is_cached=True, 
+                    timestamp=cached['timestamp']
+                )
+                self.loading.visible = False
+                self.page.update()
+                return
+
+        # 2. FETCH FROM API
         try:
             weather_data, forecast_data = await asyncio.gather(
                 self.weather_service.get_weather(city),
                 self.weather_service.get_forecast(city)
             )
             
-            await self.display_weather(weather_data, forecast_data)
+            # 3. SAVE TO CACHE
+            self.weather_cache[cache_key] = {
+                "weather": weather_data,
+                "forecast": forecast_data,
+                "timestamp": now
+            }
+            
+            await self.display_weather(weather_data, forecast_data, is_cached=False)
             self.add_to_history(city)
             
         except Exception as e:
-            self.show_error(str(e))
+            # 4. OFFLINE FALLBACK
+            if cache_key in self.weather_cache:
+                cached = self.weather_cache[cache_key]
+                self.show_error("Offline Mode: Showing cached data.")
+                await asyncio.sleep(1.5) 
+                await self.display_weather(
+                    cached['weather'], 
+                    cached['forecast'], 
+                    is_cached=True, 
+                    timestamp=cached['timestamp']
+                )
+            else:
+                self.show_error(str(e))
         
         finally:
             self.loading.visible = False
