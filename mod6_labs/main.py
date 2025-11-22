@@ -4,7 +4,7 @@
 import flet as ft
 import datetime
 import asyncio
-import httpx # Added for IP geolocation
+import httpx
 from weather_service import WeatherService
 from config import Config
 
@@ -274,7 +274,7 @@ class WeatherApp:
         search_row = ft.Row(
             [
                 ft.Container(self.search_bar, expand=True),
-                self.location_button, # Add location button here
+                self.location_button, 
                 self.search_button, 
             ],
             alignment=ft.MainAxisAlignment.CENTER,
@@ -313,11 +313,8 @@ class WeatherApp:
             self.page.close(self.current_alert)
             self.current_alert = None
 
-    # --- IP LOCATION WEATHER ---
     async def get_current_location_weather(self):
         """Get weather for current location using IP."""
-        
-        # Show loading while detecting
         self.loading.visible = True
         self.error_message.visible = False
         self.weather_container.visible = False
@@ -325,19 +322,13 @@ class WeatherApp:
         
         try:
             async with httpx.AsyncClient() as client:
-                # Get location from IP
                 response = await client.get("https://ipapi.co/json/")
                 data = response.json()
                 city = data.get('city', '')
                 
                 if city:
-                    # Update search bar with detected city
                     self.search_bar.value = city
                     self.search_bar.update()
-                    
-                    # Fetch weather for this city
-                    # Note: We call get_weather, which handles the loading/display logic
-                    # but we need to ensure we don't double-trigger loading
                     await self.get_weather()
                 else:
                     self.show_error("Could not detect your city name.")
@@ -359,12 +350,64 @@ class WeatherApp:
             self.search_bar.close_view(current_val)
         self.page.run_task(self.get_weather)
 
+    # --- NEW: WARNING SYSTEM LOGIC ---
+    def get_weather_warnings(self, data: dict):
+        """Analyze weather data and return a warning message and style."""
+        
+        temp = data.get("main", {}).get("temp", 0)
+        wind = data.get("wind", {}).get("speed", 0)
+        weather_desc = data.get("weather", [{}])[0].get("main", "").lower()
+        
+        warning = None
+        
+        # 1. Extreme Heat
+        if temp > 35:
+            warning = {
+                "msg": f"Extreme Heat Alert! ({temp:.1f}°C)\nWear sunscreen and stay hydrated.",
+                "color": ft.Colors.RED_100,
+                "icon": ft.Icons.HEAT_PUMP,
+                "icon_color": ft.Colors.RED
+            }
+        # 2. High Heat (Warning Level)
+        elif temp > 30:
+            warning = {
+                "msg": f"High Temperature Warning ({temp:.1f}°C)\nLimit outdoor activities.",
+                "color": ft.Colors.AMBER_100,
+                "icon": ft.Icons.WARNING,
+                "icon_color": ft.Colors.AMBER
+            }
+        # 3. Extreme Cold
+        elif temp < 5:
+            warning = {
+                "msg": f"Freeze Warning! ({temp:.1f}°C)\nWear heavy winter clothing.",
+                "color": ft.Colors.BLUE_100,
+                "icon": ft.Icons.AC_UNIT,
+                "icon_color": ft.Colors.BLUE
+            }
+        # 4. High Wind
+        elif wind > 15: # m/s
+            warning = {
+                "msg": f"High Wind Alert! ({wind} m/s)\nSecure loose objects outside.",
+                "color": ft.Colors.GREY_300,
+                "icon": ft.Icons.AIR,
+                "icon_color": ft.Colors.GREY_700
+            }
+        # 5. Rain/Storm
+        elif "rain" in weather_desc or "storm" in weather_desc:
+            warning = {
+                "msg": "Rain/Storm Detected.\nDon't forget your umbrella!",
+                "color": ft.Colors.BLUE_GREY_100,
+                "icon": ft.Icons.UMBRELLA,
+                "icon_color": ft.Colors.BLUE_GREY_700
+            }
+            
+        return warning
+
     async def display_weather(self, data: dict, forecast_data: dict = None):
         """Display weather information."""
         city_name = data.get("name", "Unknown")
         country = data.get("sys", {}).get("country", "")
         
-        # --- STORE STATE ---
         self.current_unit = "metric"
         self.current_temp = data.get("main", {}).get("temp", 0)
         self.current_feels_like = data.get("main", {}).get("feels_like", 0)
@@ -457,12 +500,13 @@ class WeatherApp:
         self.weather_container.visible = True
         self.page.update()
 
-        # --- WEATHER ALERTS ---
-        if self.current_temp > 27:
+        # --- NEW: INTEGRATED ALERT SYSTEM ---
+        warning = self.get_weather_warnings(data)
+        if warning:
             self.current_alert = ft.Banner(
-                bgcolor=ft.Colors.AMBER_100,
-                leading=ft.Icon(ft.Icons.WARNING, color=ft.Colors.AMBER, size=40),
-                content=ft.Text(f"⚠️ High temperature alert! ({self.current_temp:.1f}°C)"),
+                bgcolor=warning["color"],
+                leading=ft.Icon(warning["icon"], color=warning["icon_color"], size=40),
+                content=ft.Text(warning["msg"], color=ft.Colors.BLACK),
                 actions=[
                     ft.TextButton("Dismiss", on_click=self.close_banner)
                 ],
