@@ -39,8 +39,9 @@ class AIService:
                 f"It is currently {time_of_day} in {city}. The weather is {weather_desc} and {temp} degrees Celsius. "
                 "Give me a JSON response with three fields: "
                 f"'fact' (a short and specific, scientific or historical trivia related to a {weather_desc} weather or to {city}), "
-                "'music' (a song title and artist that strictly matches the vibe of this weather and time of day), "
-                "and 'music_explanation' (a very short, 1-sentence explanation of why this song fits the current weather and time). "
+                "'music' (a song title and artist that stricty matches the vibe of this weather, time of day, the location, or combination of them), "
+                "and 'music_explanation' (a very short, 1-sentence explanation of why this song fits the current weather and time). " 
+                "Base the song choice on what you would feel normally on this kind of weather and time. "
                 "Do not use markdown formatting."
             )
             print(f"DEBUG: AI Prompt: {time_of_day} | {city} | {weather_desc} | {temp}")
