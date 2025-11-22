@@ -6,8 +6,11 @@ import datetime
 import asyncio
 import httpx
 from weather_service import WeatherService
+from ai_service import AIService
 from config import Config
 
+# NOTE: We removed the explicit 'from flet.map import ...' to avoid the internal ImportError.
+# We will access map components via 'ft.Map', 'ft.MapTileLayer', etc. inside build_map.
 
 class WeatherApp:
     """Main Weather Application class."""
@@ -15,29 +18,36 @@ class WeatherApp:
     def __init__(self, page: ft.Page):
         self.page = page
         self.weather_service = WeatherService()
+        self.ai_service = AIService()
         self.page.scroll = "auto"
         self.setup_page()
         
-        # --- CACHE & STATE ---
+        # Initialize history
         self.search_history = []
-        self.current_alert = None
-        self.weather_cache = {} # { "city": {"weather": data, "forecast": data, "timestamp": datetime} }
-        self.CACHE_DURATION = datetime.timedelta(minutes=10) # 10 min cache life
+        self.current_alert = None 
+        
+        # --- FIX: Restore Cache Initialization ---
+        self.weather_cache = {} 
+        self.CACHE_DURATION = datetime.timedelta(minutes=10)
         
         # --- STATE TRACKING ---
-        self.current_unit = "metric"
+        self.current_unit = "metric" # Default to metric
         self.current_temp = 0
         self.current_feels_like = 0
         self.forecast_data = None 
         
         self.build_ui()
+        
+        # --- AUTO-FETCH LOCATION ON START ---
         self.page.run_task(self.get_current_location_weather)
 
     def add_to_history(self, city: str):
-        """Add city to search history."""
+        """Add city to search history and update UI."""
         city = city.strip().title()
+        
         if city in self.search_history:
             self.search_history.remove(city)
+            
         self.search_history.insert(0, city)
         self.search_history = self.search_history[:5]
         
@@ -51,6 +61,7 @@ class WeatherApp:
         
         item_count = len(self.search_history)
         view_height = min(350, max(70, item_count * 65))
+        
         self.search_bar.view_size_constraints = ft.BoxConstraints(max_height=view_height)
         self.search_bar.update()
 
@@ -90,6 +101,7 @@ class WeatherApp:
                 all_cards = self.additional_info_cards + getattr(self, 'forecast_cards', []) + getattr(self, 'solar_events', [])
                 for card in all_cards:
                     card.bgcolor = ft.Colors.BLUE_50
+                    
         else:
             self.page.theme_mode = ft.ThemeMode.LIGHT
             self.theme_button.icon = ft.Icons.DARK_MODE
@@ -125,7 +137,12 @@ class WeatherApp:
 
     def update_display(self):
         """Update temperature displays on the UI."""
+        # FIX: Check if temperature control exists before updating
+        if not hasattr(self, 'temperature'):
+            return
+
         unit_sym = "°C" if self.current_unit == "metric" else "°F"
+        
         self.unit_button.text = unit_sym
         self.unit_button.update()
         
@@ -160,12 +177,16 @@ class WeatherApp:
             f_date_str = item['dt_txt']
             f_date = datetime.datetime.strptime(f_date_str, "%Y-%m-%d %H:%M:%S")
             f_day = f_date.strftime("%a")
+            
+            # Get base temp (Metric)
             f_temp = item['main']['temp']
             
+            # Convert if needed
             if self.current_unit == "imperial":
                 f_temp = (f_temp * 9/5) + 32
                 
             f_icon = item['weather'][0]['icon']
+            
             card_bg = ft.Colors.WHITE if self.page.theme_mode == ft.ThemeMode.LIGHT else ft.Colors.BLUE_50
             
             card = ft.Container(
@@ -186,8 +207,83 @@ class WeatherApp:
             self.forecast_cards.append(card)
             
         self.forecast_row.controls = self.forecast_cards
+        
+        # FIX: ONLY UPDATE IF ADDED TO PAGE
         if self.forecast_row.page:
             self.forecast_row.update()
+
+    # --- NEW: BUILD MAP WITH SAFETY CHECK ---
+    def build_map(self):
+        """Create the Map control safely."""
+        try:
+            # Try to create map components. If this fails (e.g. ImportError), it jumps to except.
+            self.marker_layer = ft.MapMarkerLayer()
+            
+            self.map = ft.Map(
+                expand=True,
+                configuration=ft.MapConfiguration(
+                    initial_center=ft.MapLatitudeLongitude(14.5995, 120.9842),
+                    initial_zoom=10,
+                    on_tap=self.on_map_tap
+                ),
+                layers=[
+                    ft.MapTileLayer(
+                        url_template="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    ),
+                    ft.MapTileLayer(
+                        url_template=f"https://tile.openweathermap.org/map/temp_new/{{z}}/{{x}}/{{y}}.png?appid={Config.API_KEY}",
+                        opacity=0.5
+                    ),
+                    self.marker_layer
+                ],
+            )
+            
+            return ft.Container(
+                content=self.map,
+                border_radius=10,
+                height=300,
+                clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                border=ft.border.all(1, ft.Colors.GREY_300)
+            )
+            
+        except (AttributeError, ImportError) as e:
+            print(f"Map not available: {e}")
+            # Return a placeholder if map fails to load
+            return ft.Container(
+                content=ft.Column([
+                    ft.Icon(ft.Icons.MAP, size=40, color=ft.Colors.GREY_400),
+                    ft.Text("Map view unavailable in this environment", color=ft.Colors.GREY_500)
+                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                border_radius=10,
+                height=150,
+                bgcolor=ft.Colors.GREY_100,
+                border=ft.border.all(1, ft.Colors.GREY_300)
+            )
+
+    async def on_map_tap(self, e: ft.MapTapEvent):
+        """Handle click on map to fetch weather."""
+        lat = e.coordinates.latitude
+        lon = e.coordinates.longitude
+        
+        self.loading.visible = True
+        self.page.update()
+        
+        try:
+            weather_data = await self.weather_service.get_weather_by_coordinates(lat, lon)
+            city = weather_data.get('name', '')
+            
+            forecast_data = None
+            if city:
+                self.search_bar.value = city
+                forecast_data = await self.weather_service.get_forecast(city)
+            
+            await self.display_weather(weather_data, forecast_data)
+            
+        except Exception as ex:
+            self.show_error(f"Map error: {str(ex)}")
+        finally:
+            self.loading.visible = False
+            self.page.update()
 
     def build_ui(self):
         """Build the user interface."""
@@ -227,14 +323,17 @@ class WeatherApp:
             view_hint_text="Recent searches...",
             on_submit=self.on_search,
             on_tap=lambda e: self.search_bar.open_view(),
+            
             bar_bgcolor=ft.Colors.WHITE,
             bar_shape=ft.RoundedRectangleBorder(radius=5),
             bar_border_side=ft.BorderSide(width=1, color=ft.Colors.BLACK),
             bar_leading=ft.Icon(ft.Icons.LOCATION_CITY, color=ft.Colors.BLUE_700),
             bar_elevation=0,
+            
             view_bgcolor=ft.Colors.WHITE,
             view_shape=ft.RoundedRectangleBorder(radius=5),
             view_size_constraints=ft.BoxConstraints(max_height=70),
+            
             controls=[] 
         )
         
@@ -276,8 +375,6 @@ class WeatherApp:
         
         self.error_message = ft.Text("", color=ft.Colors.RED_700, visible=False)
         self.loading = ft.ProgressRing(visible=False)
-        
-        # Removed status bar from here as it will be at the bottom now
         
         self.page.add(
             ft.Column(
@@ -381,20 +478,125 @@ class WeatherApp:
             }
         return warning
 
-    async def display_weather(self, data: dict, forecast_data: dict = None, is_cached: bool = False, timestamp: datetime.datetime = None):
+    # --- UPDATED LIFESTYLE METHOD (Responsive Colors & Content) ---
+    async def get_lifestyle_content(self, weather_main, temp, city, timezone_offset):
+        """Get lifestyle content (AI or Hardcoded fallback)."""
+        
+        # Calculate TRUE local time using API timezone offset
+        utc_now = datetime.datetime.utcnow()
+        local_time = utc_now + datetime.timedelta(seconds=timezone_offset)
+        hour = local_time.hour
+        
+        if 5 <= hour < 12:
+            time_of_day = "morning"
+        elif 12 <= hour < 17:
+            time_of_day = "afternoon"
+        elif 17 <= hour < 21:
+            time_of_day = "evening"
+        else:
+            time_of_day = "night"
+
+        # Check current theme mode
+        is_dark = self.page.theme_mode == ft.ThemeMode.DARK
+        
+        # Define colors based on mode (Light / Dark)
+        colors = {
+            "clear": (ft.Colors.ORANGE_50, ft.Colors.ORANGE_900),
+            "cloud": (ft.Colors.BLUE_GREY_50, ft.Colors.BLUE_GREY_900),
+            "rain": (ft.Colors.INDIGO_50, ft.Colors.INDIGO_900),
+            "thunder": (ft.Colors.DEEP_PURPLE_50, ft.Colors.DEEP_PURPLE_900),
+            "snow": (ft.Colors.CYAN_50, ft.Colors.CYAN_900),
+            "default": (ft.Colors.BLUE_50, ft.Colors.BLUE_900)
+        }
+        
+        weather_key = weather_main.lower()
+        bg_color = colors["default"][1] if is_dark else colors["default"][0]
+        
+        for key, (light_col, dark_col) in colors.items():
+            if key in weather_key:
+                bg_color = dark_col if is_dark else light_col
+                break
+
+        # 1. Try AI Generation
+        try:
+            ai_content = await self.ai_service.generate_lifestyle_content(weather_main, temp, city, time_of_day)
+            
+            # Icon mapping
+            icon_map = {
+                "clear": ft.Icons.WB_SUNNY,
+                "cloud": ft.Icons.CLOUD_QUEUE,
+                "rain": ft.Icons.WATER_DROP,
+                "thunder": ft.Icons.FLASH_ON,
+                "snow": ft.Icons.AC_UNIT
+            }
+            
+            icon = ft.Icons.MUSIC_NOTE
+            for key, val in icon_map.items():
+                if key in weather_key:
+                    icon = val
+                    break
+            
+            return {
+                "fact": ai_content.get("fact", "Weather is interesting!"),
+                "music": ai_content.get("music", "Weather with You - Crowded House"),
+                "explanation": ai_content.get("music_explanation", "Fits the vibe."),
+                "music_icon": icon,
+                "fact_icon": ft.Icons.LIGHTBULB,
+                "bg": bg_color
+            }
+            
+        except Exception:
+            return self.get_hardcoded_lifestyle(weather_main, bg_color)
+
+    def get_hardcoded_lifestyle(self, weather_main, bg_color):
+        """Fallback hardcoded content."""
+        weather_main = weather_main.lower()
+        content = {
+            "fact": "The fastest wind ever recorded on Earth was 253 mph.",
+            "music": "Weather with You - Crowded House",
+            "explanation": "A classic weather song.",
+            "music_icon": ft.Icons.MUSIC_NOTE,
+            "fact_icon": ft.Icons.LIGHTBULB,
+            "bg": bg_color
+        }
+        
+        if "clear" in weather_main:
+            content["fact"] = "The sun is 400 times larger than the moon."
+            content["music"] = "Here Comes The Sun - The Beatles"
+            content["explanation"] = "Perfect for a sunny day."
+            content["music_icon"] = ft.Icons.WB_SUNNY
+        elif "cloud" in weather_main:
+            content["fact"] = "Clouds can weigh more than a million pounds!"
+            content["music"] = "Sweater Weather - The Neighbourhood"
+            content["explanation"] = "Cozy vibes for cloudy weather."
+            content["music_icon"] = ft.Icons.CLOUD_QUEUE
+        elif "rain" in weather_main:
+            content["fact"] = "Raindrops look like hamburger buns when falling."
+            content["music"] = "Umbrella - Rihanna"
+            content["explanation"] = "Stay dry out there!"
+            content["music_icon"] = ft.Icons.WATER_DROP
+            
+        return content
+
+    async def display_weather(self, data: dict, forecast_data: dict = None, is_cached: bool = False, timestamp: datetime.datetime = None, is_offline: bool = False):
         """Display weather information with cache status."""
         city_name = data.get("name", "Unknown")
         country = data.get("sys", {}).get("country", "")
         
-        # --- DETERMINE FOOTER TEXT ---
+        # --- DETERMINING FOOTER TEXT ---
         footer_text = "Live Data"
         footer_color = ft.Colors.GREY_700
         
-        if is_cached:
+        if is_offline:
             time_diff = datetime.datetime.now() - timestamp
             mins_ago = int(time_diff.total_seconds() / 60)
             footer_text = f"Offline - Data from {mins_ago} mins ago"
             footer_color = ft.Colors.ORANGE_700
+        elif is_cached:
+            time_diff = datetime.datetime.now() - timestamp
+            mins_ago = int(time_diff.total_seconds() / 60)
+            footer_text = f"Updated {mins_ago} mins ago"
+            footer_color = ft.Colors.GREEN_700
         
         self.current_unit = "metric"
         self.current_temp = data.get("main", {}).get("temp", 0)
@@ -405,6 +607,7 @@ class WeatherApp:
         self.unit_button.update()
         
         humidity = data.get("main", {}).get("humidity", 0)
+        weather_main = data.get("weather", [{}])[0].get("main", "")
         description = data.get("weather", [{}])[0].get("description", "").title()
         icon_code = data.get("weather", [{}])[0].get("icon", "01d")
         wind_speed = data.get("wind", {}).get("speed", 0)
@@ -414,6 +617,28 @@ class WeatherApp:
         timezone_offset = data.get("timezone", 0)
         sunrise = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunrise", 0) + timezone_offset).strftime("%I:%M %p")
         sunset = datetime.datetime.utcfromtimestamp(data.get("sys", {}).get("sunset", 0) + timezone_offset).strftime("%I:%M %p")
+        date_display = datetime.datetime.utcfromtimestamp(data.get("dt", 0) + timezone_offset)
+        
+        # --- MAP UPDATE LOGIC WITH SAFETY CHECK ---
+        if hasattr(self, 'map') and hasattr(self, 'marker_layer'):
+            try:
+                coord = data.get("coord", {})
+                lat = coord.get("lat")
+                lon = coord.get("lon")
+                if lat and lon:
+                    # Update Map Center
+                    self.map.configuration.center = ft.MapLatitudeLongitude(lat, lon)
+                    # Add Marker
+                    self.marker_layer.markers.clear()
+                    self.marker_layer.markers.append(
+                        ft.MapMarker(
+                            content=ft.Icon(ft.Icons.LOCATION_ON, color=ft.Colors.RED, size=40),
+                            coordinates=ft.MapLatitudeLongitude(lat, lon)
+                        )
+                    )
+                    self.map.update()
+            except Exception as e:
+                print(f"Map update failed: {e}")
         
         self.additional_info_cards = [
             self.create_info_card(ft.Icons.WATER_DROP, "Humidity", f'{humidity}%' if humidity != 0 else 'No Data'),
@@ -450,12 +675,58 @@ class WeatherApp:
         
         self.description = ft.Text(description, size=16, italic=True, color=ft.Colors.GREY_700)
 
+        # --- GET LIFESTYLE CONTENT (ASYNC) WITH TIMEZONE ---
+        lifestyle = await self.get_lifestyle_content(weather_main, self.current_temp, city_name, timezone_offset)
+        
+        # Text color for dark/light mode in cards
+        card_text_color = ft.Colors.WHITE if self.page.theme_mode == ft.ThemeMode.DARK else ft.Colors.BLACK
+        sub_text_color = ft.Colors.GREY_400 if self.page.theme_mode == ft.ThemeMode.DARK else ft.Colors.GREY_700
+
+        # Trivia Card
+        trivia_card = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row([ft.Icon(lifestyle["fact_icon"], size=16, color=card_text_color), ft.Text("Trivia", size=12, weight=ft.FontWeight.BOLD, color=card_text_color)], alignment=ft.MainAxisAlignment.CENTER),
+                    ft.Text(lifestyle["fact"], size=12, italic=True, no_wrap=False, text_align=ft.TextAlign.CENTER, color=sub_text_color),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            # REMOVED BG COLOR
+            # bgcolor=lifestyle["bg"],
+            border_radius=10,
+            padding=10,
+            expand=True, 
+        )
+
+        # Music Card
+        music_card = ft.Container(
+            content=ft.Column(
+                [
+                    ft.Row([ft.Icon(lifestyle["music_icon"], size=16, color=card_text_color), ft.Text("Music", size=12, weight=ft.FontWeight.BOLD, color=card_text_color)], alignment=ft.MainAxisAlignment.CENTER),
+                    ft.Text(lifestyle["music"], size=12, italic=True, no_wrap=False, text_align=ft.TextAlign.CENTER, color=sub_text_color),
+                    ft.Text(f"({lifestyle['explanation']})", size=10, color=sub_text_color, text_align=ft.TextAlign.CENTER),
+                ],
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            # REMOVED BG COLOR
+            # bgcolor=lifestyle["bg"],
+            border_radius=10,
+            padding=10,
+            expand=True, 
+        )
+
+        # REARRANGED LAYOUT
         self.weather_container.content = ft.Column(
             [
+                # 1. Location
                 ft.Row([ft.Text(f"{city_name}, {country}", size=30, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK)], alignment=ft.MainAxisAlignment.CENTER),
+                
+                # 2. Temp & Description
                 ft.Row(
                     [
-                        ft.Column([self.temperature, self.feelslike]),
+                        ft.Column([self.temperature, self.feelslike], alignment=ft.MainAxisAlignment.CENTER),
                         ft.Column(
                             [
                                 ft.Container(
@@ -465,18 +736,33 @@ class WeatherApp:
                                 self.description,
                             ],
                             spacing=-20,
+                            alignment=ft.MainAxisAlignment.CENTER
                         )
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_EVENLY,
                 ),
+                
+                # 3. Trivia Card
+                ft.Row([trivia_card]), 
+                
+                # 4. Additional Info
                 ft.Row(self.additional_info_cards, scroll="adaptive", alignment=ft.MainAxisAlignment.SPACE_EVENLY),
+                
+                # 5. Music Suggestion
+                ft.Row([music_card]), 
+                
                 ft.Divider(),
+                
+                # 6. Sunrise/Sunset
                 ft.Text("Sunrise and Sunset", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
                 ft.Row(self.solar_events, alignment=ft.MainAxisAlignment.SPACE_EVENLY),
+                
                 ft.Divider(),
+                
+                # 7. Forecast
                 ft.Text("5-Day Forecast", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLACK),
                 self.forecast_row,
-                # --- NEW FOOTER TEXT ---
+                
                 ft.Text(footer_text, size=12, italic=True, color=footer_color)
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -520,7 +806,6 @@ class WeatherApp:
         
         # 1. CHECK CACHE FIRST
         now = datetime.datetime.now()
-        # Normalize key for cache lookup
         cache_key = city.lower()
         
         if cache_key in self.weather_cache:
@@ -530,7 +815,8 @@ class WeatherApp:
                     cached['weather'], 
                     cached['forecast'], 
                     is_cached=True, 
-                    timestamp=cached['timestamp']
+                    timestamp=cached['timestamp'],
+                    is_offline=False
                 )
                 self.loading.visible = False
                 self.page.update()
@@ -563,7 +849,8 @@ class WeatherApp:
                     cached['weather'], 
                     cached['forecast'], 
                     is_cached=True, 
-                    timestamp=cached['timestamp']
+                    timestamp=cached['timestamp'],
+                    is_offline=True
                 )
             else:
                 self.show_error(str(e))
